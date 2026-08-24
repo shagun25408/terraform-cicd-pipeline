@@ -1,17 +1,15 @@
 pipeline {
     agent any
 
-    options {
-        ansiColor('xterm')
-        timestamps()
-        buildDiscarder(logRotator(numToKeepStr: '20'))
+    triggers {
+        // Checks GitHub for changes approximately every 5 minutes
+        // Useful because your Jenkins is running locally and GitHub
+        // cannot directly reach localhost for webhooks.
+        pollSCM('H/5 * * * *')
     }
 
     environment {
-        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
-        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
-        AWS_DEFAULT_REGION    = 'ap-south-1'
-        TF_IN_AUTOMATION      = 'true'
+        TF_IN_AUTOMATION = 'true'
     }
 
     stages {
@@ -32,10 +30,16 @@ pipeline {
 
         stage('Security Scan') {
             steps {
+                // Initialize TFLint
                 bat 'tflint --init'
+
+                // Run Terraform linting
                 bat 'tflint --format compact'
 
+                // Generate a security report for Jenkins
                 bat 'tfsec . --format junit --out tfsec-report.xml --soft-fail'
+
+                // Fail the pipeline if HIGH severity issues are found
                 bat 'tfsec . --minimum-severity HIGH'
             }
 
@@ -48,47 +52,37 @@ pipeline {
 
         stage('Plan') {
             steps {
-                bat 'terraform plan -input=false -out=tfplan'
-                bat 'terraform show -no-color tfplan > tfplan.txt'
+                bat 'terraform plan -out=tfplan'
 
-                archiveArtifacts artifacts: 'tfplan, tfplan.txt', fingerprint: true
+                // Archive the Terraform plan as a Jenkins artifact
+                archiveArtifacts artifacts: 'tfplan', fingerprint: true
             }
         }
 
         stage('Approval') {
-            when {
-                branch 'main'
-            }
-
             steps {
-                timeout(time: 30, unit: 'MINUTES') {
-                    input message: 'Apply the archived plan to the cloud account?', ok: 'Apply'
-                }
+                input message: 'Terraform plan is ready. Approve infrastructure deployment?'
             }
         }
 
         stage('Apply') {
-            when {
-                branch 'main'
-            }
-
             steps {
-                bat 'terraform apply -input=false tfplan'
+                bat 'terraform apply -auto-approve tfplan'
             }
         }
     }
 
     post {
+        always {
+            cleanWs()
+        }
+
         success {
-            echo 'Pipeline completed successfully.'
+            echo 'Pipeline completed successfully!'
         }
 
         failure {
             echo 'Pipeline failed - inspect the stage that went red.'
-        }
-
-        always {
-            cleanWs()
         }
     }
 }
