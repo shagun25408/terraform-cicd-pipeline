@@ -15,7 +15,7 @@ provider "aws" {
 
 # Create S3 bucket
 resource "aws_s3_bucket" "terraform_demo" {
-  bucket="shagun-terraform-cicd-demo-2026"
+  bucket = "shagun-terraform-cicd-demo-2026"
 }
 
 # Block all public access to the bucket
