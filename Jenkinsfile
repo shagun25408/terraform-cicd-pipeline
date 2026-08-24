@@ -1,17 +1,6 @@
 pipeline {
     agent any
 
-    triggers {
-        // Checks GitHub for changes approximately every 5 minutes
-        // Useful because your Jenkins is running locally and GitHub
-        // cannot directly reach localhost for webhooks.
-        pollSCM('H/5 * * * *')
-    }
-
-    environment {
-        TF_IN_AUTOMATION = 'true'
-    }
-
     stages {
 
         stage('Checkout') {
@@ -22,7 +11,7 @@ pipeline {
 
         stage('Validate') {
             steps {
-                bat 'terraform fmt -check -recursive '
+                bat 'terraform fmt -check -recursive'
                 bat 'terraform init -input=false'
                 bat 'terraform validate'
             }
@@ -30,16 +19,10 @@ pipeline {
 
         stage('Security Scan') {
             steps {
-                // Initialize TFLint
                 bat 'tflint --init'
-
-                // Run Terraform linting
                 bat 'tflint --format compact'
 
-                // Generate a security report for Jenkins
                 bat 'tfsec . --format junit --out tfsec-report.xml --soft-fail'
-
-                // Fail the pipeline if HIGH severity issues are found
                 bat 'tfsec . --minimum-severity HIGH'
             }
 
@@ -52,22 +35,38 @@ pipeline {
 
         stage('Plan') {
             steps {
-                bat 'terraform plan -out=tfplan'
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-credentials',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    bat 'terraform plan -out=tfplan'
+                }
 
-                // Archive the Terraform plan as a Jenkins artifact
                 archiveArtifacts artifacts: 'tfplan', fingerprint: true
             }
         }
 
         stage('Approval') {
-            steps {
-                input message: 'Terraform plan is ready. Approve infrastructure deployment?'
+            input {
+                message 'Terraform plan completed. Do you want to apply these changes?'
+                ok 'Apply Infrastructure'
             }
         }
 
         stage('Apply') {
             steps {
-                bat 'terraform apply -auto-approve tfplan'
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'aws-credentials',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    )
+                ]) {
+                    bat 'terraform apply -auto-approve tfplan'
+                }
             }
         }
     }
