@@ -50,9 +50,11 @@ pipeline {
         }
 
         stage('Approval') {
-            input {
-                message 'Terraform plan completed. Do you want to apply these changes?'
-                ok 'Apply Infrastructure'
+            steps {
+                script {
+                    input message: 'Terraform plan completed. Approve deployment?',
+                          ok: 'Apply Infrastructure'
+                }
             }
         }
 
