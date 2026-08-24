@@ -38,3 +38,17 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_demo" {
     }
   }
 }
+
+# TEMPORARY: Intentionally insecure configuration for Step 9 testing
+resource "aws_security_group" "insecure_ssh" {
+  name        = "insecure-ssh-test"
+  description = "Temporary insecure SSH rule for tfsec testing"
+
+  ingress {
+    description = "SSH from anywhere"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
